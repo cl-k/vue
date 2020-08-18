@@ -1,6 +1,6 @@
 /*!
  * Vue.js v2.6.11
- * (c) 2014-2019 Evan You
+ * (c) 2014-2020 Evan You
  * Released under the MIT License.
  */
 (function (global, factory) {
@@ -7649,7 +7649,7 @@
         // skip the update if old and new VDOM state is the same.
         // `value` is handled separately because the DOM value may be temporarily
         // out of sync with VDOM state due to focus, composition and modifiers.
-        // This  #4521 by skipping the unnecesarry `checked` update.
+        // This  #4521 by skipping the unnecessary `checked` update.
         cur !== oldProps[key]
       ) {
         // some property updates can throw
@@ -9894,7 +9894,7 @@
         }
       },
       comment: function comment (text, start, end) {
-        // adding anyting as a sibling to the root node is forbidden
+        // adding anything as a sibling to the root node is forbidden
         // comments should still be allowed, but ignored
         if (currentParent) {
           var child = {
@@ -11873,15 +11873,19 @@
     var el = query(id);
     return el && el.innerHTML
   });
-
+  // 保留 Vue 实例的 $mount 方法
   var mount = Vue.prototype.$mount;
+  // $mount 方法是挂载，把生成的 DOM 挂载到页面上
   Vue.prototype.$mount = function (
     el,
+    // 非 ssr 情况下为 false, ssr 时候为 true
     hydrating
   ) {
+    // 获取 el 对象
     el = el && query(el);
 
     /* istanbul ignore if */
+    // el 不能是 body 或者 html
     if (el === document.body || el === document.documentElement) {
       warn(
         "Do not mount Vue to <html> or <body> - mount to normal elements instead."
@@ -11891,6 +11895,7 @@
 
     var options = this.$options;
     // resolve template/el and convert to render function
+    // 把 template/el 转换成 render 函数
     if (!options.render) {
       var template = options.template;
       if (template) {
@@ -11941,6 +11946,7 @@
         }
       }
     }
+    // 调用 mount 方法，渲染 DOM
     return mount.call(this, el, hydrating)
   };
 
@@ -11963,3 +11969,4 @@
   return Vue;
 
 }));
+//# sourceMappingURL=vue.js.map

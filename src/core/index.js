@@ -3,7 +3,7 @@ import { initGlobalAPI } from './global-api/index'
 import { isServerRendering } from 'core/util/env'
 import { FunctionalRenderContext } from 'core/vdom/create-functional-component'
 
-initGlobalAPI(Vue) // 给 Vue 挂载静态方法
+initGlobalAPI(Vue) // 注册 Vue 的静态属性/方法
 
 Object.defineProperty(Vue.prototype, '$isServer', {
   get: isServerRendering

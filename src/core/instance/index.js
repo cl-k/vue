@@ -18,6 +18,7 @@ function Vue(options) {
 // 注册 vm 的 _init() 方法，初始化 vm
 initMixin(Vue)
 // 注册 vm 的 $data/$props/$set/$delete/$watch
+// instance/state.js
 stateMixin(Vue)
 // 初始化事件相关方法
 // $on/$once/$off/$emit

@@ -152,7 +152,7 @@ export function defineReactive(
   customSetter?: ?Function,
   shallow?: boolean
 ) {
-  // 创建依赖对象实例
+  // 1.为每一个属性，创建依赖对象实例
   const dep = new Dep()
   // 获取 obj 的属性描述符对象
   const property = Object.getOwnPropertyDescriptor(obj, key)
@@ -167,7 +167,7 @@ export function defineReactive(
     val = obj[key]
   }
 
-  // 判断是否递归观察子对象，并将子对象属性都转换成 getter/setter，返回子观察对象
+  // 2.判断是否递归观察子对象，并将子对象属性都转换成 getter/setter，返回子观察对象
   let childOb = !shallow && observe(val)
   Object.defineProperty(obj, key, {
     enumerable: true,
@@ -178,8 +178,12 @@ export function defineReactive(
       const value = getter ? getter.call(obj) : val
       // 如果存在当前依赖目标，即 watcher 对象，则建立依赖
       if (Dep.target) {
+        // dep() 添加相互的依赖
+        // 一个组件对应一个 watcher 对象
+        // 一个 watcher 会对应多个 dep (要观察的属性很多)
+        // 可以手动创建多个 watcher 监听一个属性的变化，一个 dep 可以对应多个 watcher
         dep.depend()
-        // 如果子观察目标存在，建立子对象的依赖关系
+        // 如果子观察目标存在，建立子对象的依赖关系，将来 Vue.set() 会用到
         if (childOb) {
           childOb.dep.depend()
           // 如果属性是数组，则特殊处理收集数组对象依赖
@@ -213,9 +217,9 @@ export function defineReactive(
       } else {
         val = newVal
       }
-      // 如果新值是对象，观察子对象并返回子的 observer 对象
+      // 3.如果新值是对象，观察子对象并返回子的 observer 对象
       childOb = !shallow && observe(newVal)
-      // 派发更新（发布更改通知）
+      // 4.派发更新（发布更改通知）
       dep.notify()
     }
   })
@@ -232,16 +236,22 @@ export function set(target: Array<any> | Object, key: any, val: any): any {
   ) {
     warn(`Cannot set reactive property on undefined, null, or primitive value: ${(target: any)}`)
   }
+  // 判断 target 是否是数组，key 是否是合法的索引
   if (Array.isArray(target) && isValidArrayIndex(key)) {
     target.length = Math.max(target.length, key)
+    // 通过 splice 对 key 位置的元素进行替换
+    // splice 在 array.js 进行了响应式的处理
     target.splice(key, 1, val)
     return val
   }
+  // 如果 key 在对象中已经存在，直接赋值
   if (key in target && !(key in Object.prototype)) {
     target[key] = val
     return val
   }
+  // 获取 target 中的 observer 对象
   const ob = (target: any).__ob__
+  // 如果 target 是 vue 实例或者 $data 直接返回
   if (target._isVue || (ob && ob.vmCount)) {
     process.env.NODE_ENV !== 'production' && warn(
       'Avoid adding reactive properties to a Vue instance or its root $data ' +
@@ -249,11 +259,14 @@ export function set(target: Array<any> | Object, key: any, val: any): any {
     )
     return val
   }
+  // 如果 ob 不存在，target 不是响应式对象，直接赋值
   if (!ob) {
     target[key] = val
     return val
   }
+  // 把 key 设置为响应式属性
   defineReactive(ob.value, key, val)
+  // 发送通知
   ob.dep.notify()
   return val
 }
@@ -267,11 +280,16 @@ export function del(target: Array<any> | Object, key: any) {
   ) {
     warn(`Cannot delete reactive property on undefined, null, or primitive value: ${(target: any)}`)
   }
+  // 判断是否是数组，以及 key 是否合法
   if (Array.isArray(target) && isValidArrayIndex(key)) {
+    // 如果是数组通过 splice 删除
+    // splice 做过响应式处理
     target.splice(key, 1)
     return
   }
+  // 获取 target 的 ob 对象
   const ob = (target: any).__ob__
+  // target 如果是 Vue 实例或者 $data 对象，直接返回
   if (target._isVue || (ob && ob.vmCount)) {
     process.env.NODE_ENV !== 'production' && warn(
       'Avoid deleting properties on a Vue instance or its root $data ' +
@@ -279,13 +297,16 @@ export function del(target: Array<any> | Object, key: any) {
     )
     return
   }
+  // 如果 target 对象没有 key 属性直接返回
   if (!hasOwn(target, key)) {
     return
   }
+  // 删除属性
   delete target[key]
   if (!ob) {
     return
   }
+  // 通过 ob 发送通知
   ob.dep.notify()
 }
 

@@ -41,6 +41,7 @@ export default class Dep {
     }
   }
 
+  // 发布通知
   notify () {
     // stabilize the subscriber list first
     const subs = this.subs.slice()
@@ -64,6 +65,8 @@ export default class Dep {
 Dep.target = null
 const targetStack = []
 // 入栈并将当前 watcher 赋值给 Dep.target
+// 父子组件嵌套的时候先把父组件对应的 watcher 入栈
+// 再去处理子组件的 watcher ，子组件的处理完毕后，再把父组件对应的 watcher 出栈，继续操作
 export function pushTarget (target: ?Watcher) {
   targetStack.push(target)
   Dep.target = target

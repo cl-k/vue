@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>watch</title>
+  </head>
+
+  <body>
+    <div id="app">
+      {{ user.fullName }}
+    </div>
+
+    <script src="../../dist/vue.js"></script>
+    <script>
+      const vm = new Vue({
+        el: "#app",
+        data: {
+          a: '1',
+          b: '2',
+          msg: 'Hello Vue',
+          user: {
+            firstName: 'xxx',
+            lastName: 'cccc',
+            fullName: ''
+          }
+        }
+      });
+
+      // expOrFn 是表达式
+      vm.$watch('msg', function(newValue, oldValue) {
+        console.log(newValue, oldValue)
+      })
+      vm.$watch('user.firstName', function(newValue, oldValue) {
+        console.log(newValue)
+      })
+
+      // expOrFn 是函数
+      vm.$watch(function() {
+        return this.a + this.b
+      }, function(newValue, oldValue) {
+        console.log(newValue)
+      })
+      vm.$watch('user', function(newValue, oldValue) {
+        this.user.fullName = newValue.firstName + ' ' + newValue.lastName
+      }, {
+        immediate: true,
+        deep: true
+      });
+    </script>
+  </body>
+</html>

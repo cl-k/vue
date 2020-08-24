@@ -736,6 +736,7 @@
     }
   };
 
+  // 发布通知
   Dep.prototype.notify = function notify () {
     // stabilize the subscriber list first
     var subs = this.subs.slice();
@@ -758,6 +759,8 @@
   Dep.target = null;
   var targetStack = [];
   // 入栈并将当前 watcher 赋值给 Dep.target
+  // 父子组件嵌套的时候先把父组件对应的 watcher 入栈
+  // 再去处理子组件的 watcher ，子组件的处理完毕后，再把父组件对应的 watcher 出栈，继续操作
   function pushTarget (target) {
     targetStack.push(target);
     Dep.target = target;
@@ -865,7 +868,7 @@
    */
 
   var arrayProto = Array.prototype;
-  // 使用数组的原型创建一个新的对象
+  // 使用数组的原型创建一个新的对象(克隆数组的原型)
   var arrayMethods = Object.create(arrayProto);
   // 修改数组元素的方法
   var methodsToPatch = [
@@ -1042,7 +1045,7 @@
     customSetter,
     shallow
   ) {
-    // 创建依赖对象实例
+    // 1.为每一个属性，创建依赖对象实例
     var dep = new Dep();
     // 获取 obj 的属性描述符对象
     var property = Object.getOwnPropertyDescriptor(obj, key);
@@ -1057,7 +1060,7 @@
       val = obj[key];
     }
 
-    // 判断是否递归观察子对象，并将子对象属性都转换成 getter/setter，返回子观察对象
+    // 2.判断是否递归观察子对象，并将子对象属性都转换成 getter/setter，返回子观察对象
     var childOb = !shallow && observe(val);
     Object.defineProperty(obj, key, {
       enumerable: true,
@@ -1068,8 +1071,12 @@
         var value = getter ? getter.call(obj) : val;
         // 如果存在当前依赖目标，即 watcher 对象，则建立依赖
         if (Dep.target) {
+          // dep() 添加相互的依赖
+          // 一个组件对应一个 watcher 对象
+          // 一个 watcher 会对应多个 dep (要观察的属性很多)
+          // 可以手动创建多个 watcher 监听一个属性的变化，一个 dep 可以对应多个 watcher
           dep.depend();
-          // 如果子观察目标存在，建立子对象的依赖关系
+          // 如果子观察目标存在，建立子对象的依赖关系，将来 Vue.set() 会用到
           if (childOb) {
             childOb.dep.depend();
             // 如果属性是数组，则特殊处理收集数组对象依赖
@@ -1103,9 +1110,9 @@
         } else {
           val = newVal;
         }
-        // 如果新值是对象，观察子对象并返回子的 observer 对象
+        // 3.如果新值是对象，观察子对象并返回子的 observer 对象
         childOb = !shallow && observe(newVal);
-        // 派发更新（发布更改通知）
+        // 4.派发更新（发布更改通知）
         dep.notify();
       }
     });
@@ -1121,16 +1128,22 @@
     ) {
       warn(("Cannot set reactive property on undefined, null, or primitive value: " + ((target))));
     }
+    // 判断 target 是否是数组，key 是否是合法的索引
     if (Array.isArray(target) && isValidArrayIndex(key)) {
       target.length = Math.max(target.length, key);
+      // 通过 splice 对 key 位置的元素进行替换
+      // splice 在 array.js 进行了响应式的处理
       target.splice(key, 1, val);
       return val
     }
+    // 如果 key 在对象中已经存在，直接赋值
     if (key in target && !(key in Object.prototype)) {
       target[key] = val;
       return val
     }
+    // 获取 target 中的 observer 对象
     var ob = (target).__ob__;
+    // 如果 target 是 vue 实例或者 $data 直接返回
     if (target._isVue || (ob && ob.vmCount)) {
       warn(
         'Avoid adding reactive properties to a Vue instance or its root $data ' +
@@ -1138,11 +1151,14 @@
       );
       return val
     }
+    // 如果 ob 不存在，target 不是响应式对象，直接赋值
     if (!ob) {
       target[key] = val;
       return val
     }
+    // 把 key 设置为响应式属性
     defineReactive$$1(ob.value, key, val);
+    // 发送通知
     ob.dep.notify();
     return val
   }
@@ -1155,11 +1171,16 @@
     ) {
       warn(("Cannot delete reactive property on undefined, null, or primitive value: " + ((target))));
     }
+    // 判断是否是数组，以及 key 是否合法
     if (Array.isArray(target) && isValidArrayIndex(key)) {
+      // 如果是数组通过 splice 删除
+      // splice 做过响应式处理
       target.splice(key, 1);
       return
     }
+    // 获取 target 的 ob 对象
     var ob = (target).__ob__;
+    // target 如果是 Vue 实例或者 $data 对象，直接返回
     if (target._isVue || (ob && ob.vmCount)) {
       warn(
         'Avoid deleting properties on a Vue instance or its root $data ' +
@@ -1167,13 +1188,16 @@
       );
       return
     }
+    // 如果 target 对象没有 key 属性直接返回
     if (!hasOwn(target, key)) {
       return
     }
+    // 删除属性
     delete target[key];
     if (!ob) {
       return
     }
+    // 通过 ob 发送通知
     ob.dep.notify();
   }
 
@@ -2022,9 +2046,11 @@
 
   function nextTick (cb, ctx) {
     var _resolve;
+    // 把 cb 加上异常处理存入 callbacks 数组中
     callbacks.push(function () {
       if (cb) {
         try {
+          // 调用 cb()
           cb.call(ctx);
         } catch (e) {
           handleError(e, ctx, 'nextTick');
@@ -2035,10 +2061,12 @@
     });
     if (!pending) {
       pending = true;
+      // 调用
       timerFunc();
     }
     // $flow-disable-line
     if (!cb && typeof Promise !== 'undefined') {
+      // 返回 promise 对象
       return new Promise(function (resolve) {
         _resolve = resolve;
       })
@@ -3380,7 +3408,7 @@
 
   // wrapper function for providing a more flexible interface
   // without getting yelled at by flow
-  function createElement (
+  function createElement(
     context,
     tag,
     data,
@@ -3388,6 +3416,8 @@
     normalizationType,
     alwaysNormalize
   ) {
+    // 判断第三个参数
+    // 如果 data 是数组或者原始值的话就是 children,实现类似函数重载的机制
     if (Array.isArray(data) || isPrimitive(data)) {
       normalizationType = children;
       children = data;
@@ -3399,7 +3429,7 @@
     return _createElement(context, tag, data, children, normalizationType)
   }
 
-  function _createElement (
+  function _createElement(
     context,
     tag,
     data,
@@ -3414,6 +3444,7 @@
       );
       return createEmptyVNode()
     }
+    // <component v-bind:is="currentTabComponent"></component>
     // object syntax in v-bind
     if (isDef(data) && isDef(data.is)) {
       tag = data.is;
@@ -3441,15 +3472,27 @@
       data.scopedSlots = { default: children[0] };
       children.length = 0;
     }
+    // 去处理 children
     if (normalizationType === ALWAYS_NORMALIZE) {
+      // 返回一维数组，处理用户手写的 render
+      // 当手写 render 函数的时候调用
+      // 判断 children 的类型，如果是原始值的话转换成 VNode 的数组
+      // 如果是数组的话，继续处理数组中的元素
+      // 如果数组中的子元素又是数组（slot template），递归处理
+      // 如果连续两个节点都是字符串会合并文本节点
       children = normalizeChildren(children);
     } else if (normalizationType === SIMPLE_NORMALIZE) {
+      // 把二维数组，转换成一维数组
+      // 如果 children 中有函数组件的话，函数组件会返回数组形式
+      // 这时候 children 就是一个二维数组，只需要把二维数组转换为一维数组
       children = simpleNormalizeChildren(children);
     }
     var vnode, ns;
+    // 判断 tag 是字符串还是组件
     if (typeof tag === 'string') {
       var Ctor;
       ns = (context.$vnode && context.$vnode.ns) || config.getTagNamespace(tag);
+      // 是否是 html 的保留标签，创建对应的 VNode
       if (config.isReservedTag(tag)) {
         // platform built-in elements
         if (isDef(data) && isDef(data.nativeOn)) {
@@ -3462,7 +3505,10 @@
           config.parsePlatformTagName(tag), data, children,
           undefined, undefined, context
         );
+      // 判断是否是 自定义组件
       } else if ((!data || !data.pre) && isDef(Ctor = resolveAsset(context.$options, 'components', tag))) {
+        // 查找自定义组件构造函数的声明
+        // 根据 Ctor 创建组建的 VNode
         // component
         vnode = createComponent(Ctor, data, context, children, tag);
       } else {
@@ -3489,7 +3535,7 @@
     }
   }
 
-  function applyNS (vnode, ns, force) {
+  function applyNS(vnode, ns, force) {
     vnode.ns = ns;
     if (vnode.tag === 'foreignObject') {
       // use default namespace inside foreignObject
@@ -3510,7 +3556,7 @@
   // ref #5318
   // necessary to ensure parent re-render when deep bindings like :style and
   // :class are used on slot nodes
-  function registerDeepBindings (data) {
+  function registerDeepBindings(data) {
     if (isObject(data.style)) {
       traverse(data.style);
     }
@@ -4114,6 +4160,7 @@
       };
     }
 
+    // 创建渲染 Watcher.expOrFn 为 update Component
     // we set this to vm._watcher inside the watcher's constructor
     // since the watcher's initial patch may call $forceUpdate (e.g. inside child
     // component's mounted hook), which relies on vm._watcher being already defined
@@ -4497,6 +4544,8 @@
     if (typeof expOrFn === 'function') {
       this.getter = expOrFn;
     } else {
+      // expOrFn 是字符串的时候，例如 watch: {'person.name': function ...}
+      // parsePatch('person.name') 返回一个函数获取 person.name 的值
       this.getter = parsePath(expOrFn);
       if (!this.getter) {
         this.getter = noop;
@@ -4986,20 +5035,27 @@
       cb,
       options
     ) {
+      // 获取 Vue 实例 this
       var vm = this;
       if (isPlainObject(cb)) {
+        // 判断如果 cb 是对象执行 createWatcher
         return createWatcher(vm, expOrFn, cb, options)
       }
       options = options || {};
+      // 标记为用户 watcher
       options.user = true;
+      // 创建用户 watcher 对象
       var watcher = new Watcher(vm, expOrFn, cb, options);
+      // 判断 immediate 如果为 true
       if (options.immediate) {
+        // 立即执行一次 cb 回调，并且把当前值传入
         try {
           cb.call(vm, watcher.value);
         } catch (error) {
           handleError(error, vm, ("callback for immediate watcher \"" + (watcher.expression) + "\""));
         }
       }
+      // 返回取消监听的方法
       return function unwatchFn () {
         watcher.teardown();
       }
@@ -5150,6 +5206,7 @@
   // 注册 vm 的 _init() 方法，初始化 vm
   initMixin(Vue);
   // 注册 vm 的 $data/$props/$set/$delete/$watch
+  // instance/state.js
   stateMixin(Vue);
   // 初始化事件相关方法
   // $on/$once/$off/$emit
@@ -5942,13 +5999,19 @@
     var i, j;
     var cbs = {};
 
+    // modules 节点的属性/事件/样式的操作
+    // nodeOps 节点操作
     var modules = backend.modules;
     var nodeOps = backend.nodeOps;
 
+    // 把模块中的钩子函数全部设置到 cbs 中，将来统一触发
+    // cbs --> {'create': [fn1, fn2, ...]}
     for (i = 0; i < hooks.length; ++i) {
+      // cbs['update'] = []
       cbs[hooks[i]] = [];
       for (j = 0; j < modules.length; ++j) {
         if (isDef(modules[j][hooks[i]])) {
+          // cbs['update'] = [updateAttrs, updateClass, update...]
           cbs[hooks[i]].push(modules[j][hooks[i]]);
         }
       }
@@ -6156,10 +6219,12 @@
     }
 
     function invokeCreateHooks (vnode, insertedVnodeQueue) {
+      // 调用 VNode 的钩子函数
       for (var i$1 = 0; i$1 < cbs.create.length; ++i$1) {
         cbs.create[i$1](emptyNode, vnode);
       }
       i = vnode.data.hook; // Reuse variable
+      // 调用组件的钩子函数
       if (isDef(i)) {
         if (isDef(i.create)) { i.create(emptyNode, vnode); }
         if (isDef(i.insert)) { insertedVnodeQueue.push(vnode); }
@@ -6255,6 +6320,8 @@
       }
     }
 
+    // diff 算法
+    // 更新新旧节点的子节点
     function updateChildren (parentElm, oldCh, newCh, insertedVnodeQueue, removeOnly) {
       var oldStartIdx = 0;
       var newStartIdx = 0;
@@ -6275,43 +6342,66 @@
         checkDuplicateKeys(newCh);
       }
 
+      // diff 算法
+      // 当新节点和旧节点都没有遍历完成
       while (oldStartIdx <= oldEndIdx && newStartIdx <= newEndIdx) {
         if (isUndef(oldStartVnode)) {
           oldStartVnode = oldCh[++oldStartIdx]; // Vnode has been moved left
         } else if (isUndef(oldEndVnode)) {
           oldEndVnode = oldCh[--oldEndIdx];
         } else if (sameVnode(oldStartVnode, newStartVnode)) {
+          // oldStartVnode 和 newStartVnode 相同（sameVnode）
+          // 直接将该 VNode 节点进行 patchVnode
           patchVnode(oldStartVnode, newStartVnode, insertedVnodeQueue, newCh, newStartIdx);
+          // 获取下一组开始节点
           oldStartVnode = oldCh[++oldStartIdx];
           newStartVnode = newCh[++newStartIdx];
         } else if (sameVnode(oldEndVnode, newEndVnode)) {
+          // 直接将该 VNode 节点进行 patchVnode
           patchVnode(oldEndVnode, newEndVnode, insertedVnodeQueue, newCh, newEndIdx);
+          // 获取下一组结束节点
           oldEndVnode = oldCh[--oldEndIdx];
           newEndVnode = newCh[--newEndIdx];
         } else if (sameVnode(oldStartVnode, newEndVnode)) { // Vnode moved right
+          // oldStartVnode 和 newEndVode 相同（sameVnode）
+          // 进行 patchVnode，把 oldStartVnode 移动到最后
           patchVnode(oldStartVnode, newEndVnode, insertedVnodeQueue, newCh, newEndIdx);
           canMove && nodeOps.insertBefore(parentElm, oldStartVnode.elm, nodeOps.nextSibling(oldEndVnode.elm));
+          // 移动游标，获取下一组节点
           oldStartVnode = oldCh[++oldStartIdx];
           newEndVnode = newCh[--newEndIdx];
         } else if (sameVnode(oldEndVnode, newStartVnode)) { // Vnode moved left
+          // oldEndVnode 和 newStartVnode 相同（sameVnode）
+          // 进行 patchVnode，把 oldEndVnode 移动到最前面
           patchVnode(oldEndVnode, newStartVnode, insertedVnodeQueue, newCh, newStartIdx);
           canMove && nodeOps.insertBefore(parentElm, oldEndVnode.elm, oldStartVnode.elm);
           oldEndVnode = oldCh[--oldEndIdx];
           newStartVnode = newCh[++newStartIdx];
         } else {
+          // 以上四种情况都不满足
+          // newStartVnode 依次和旧的节点比较
+
+          // 从新的节点开头获取一个，去老节点中查找相同节点
+          // 先找新开始节点的 key 和老节点相同的索引，如果没找到再通过 sameVnode 找
           if (isUndef(oldKeyToIdx)) { oldKeyToIdx = createKeyToOldIdx(oldCh, oldStartIdx, oldEndIdx); }
           idxInOld = isDef(newStartVnode.key)
             ? oldKeyToIdx[newStartVnode.key]
             : findIdxInOld(newStartVnode, oldCh, oldStartIdx, oldEndIdx);
+          // 如果没有找到
           if (isUndef(idxInOld)) { // New element
+            // 创建节点并插入到最前面
             createElm(newStartVnode, insertedVnodeQueue, parentElm, oldStartVnode.elm, false, newCh, newStartIdx);
           } else {
+            // 获取要移动的老节点
             vnodeToMove = oldCh[idxInOld];
+            // 如果使用 newStartVnode 找到相同的节点
             if (sameVnode(vnodeToMove, newStartVnode)) {
+              // 执行 pathcVnode，并且将找到的旧节点移动到最前面
               patchVnode(vnodeToMove, newStartVnode, insertedVnodeQueue, newCh, newStartIdx);
               oldCh[idxInOld] = undefined;
               canMove && nodeOps.insertBefore(parentElm, vnodeToMove.elm, oldStartVnode.elm);
             } else {
+              // 如果 key 相同，但是是不同的元素，创建新元素
               // same key but different element. treat as new element
               createElm(newStartVnode, insertedVnodeQueue, parentElm, oldStartVnode.elm, false, newCh, newStartIdx);
             }
@@ -6319,10 +6409,14 @@
           newStartVnode = newCh[++newStartIdx];
         }
       }
+      // 当结束时 oldStartIdx > oldEndIdx，旧节点遍历完，但是新节点还没有
       if (oldStartIdx > oldEndIdx) {
+        // 说明新节点比老节点多，把剩下的新节点插入到老的节点后面
         refElm = isUndef(newCh[newEndIdx + 1]) ? null : newCh[newEndIdx + 1].elm;
         addVnodes(parentElm, refElm, newCh, newStartIdx, newEndIdx, insertedVnodeQueue);
       } else if (newStartIdx > newEndIdx) {
+        // 当结束时 newStartIdx > newEndIdx，新节点遍历完，但是旧节点还没有
+        // 把老节点中的剩余节点批量删除
         removeVnodes(oldCh, oldStartIdx, oldEndIdx);
       }
     }
@@ -6360,6 +6454,7 @@
       index,
       removeOnly
     ) {
+      // 如果新旧节点是完全相同的节点，直接返回
       if (oldVnode === vnode) {
         return
       }
@@ -6393,33 +6488,50 @@
         return
       }
 
+      // 触发 prepatch 钩子函数
       var i;
       var data = vnode.data;
       if (isDef(data) && isDef(i = data.hook) && isDef(i = i.prepatch)) {
         i(oldVnode, vnode);
       }
 
+      // 获取新旧 VNode 的子节点
       var oldCh = oldVnode.children;
       var ch = vnode.children;
       if (isDef(data) && isPatchable(vnode)) {
+        // 调用 cbs 中的钩子函数，操作节点的属性/样式/事件...
+        // 触发update 钩子函数
         for (i = 0; i < cbs.update.length; ++i) { cbs.update[i](oldVnode, vnode); }
+        // 用户的自定义钩子
         if (isDef(i = data.hook) && isDef(i = i.update)) { i(oldVnode, vnode); }
       }
+
+      // 如果 vnode 没有 text 属性(说明有可能有子元素)
       if (isUndef(vnode.text)) {
+        // 新节点和老节点都有子节点
+        // 对子节点进行 diff 操作，调用 updateChildren
         if (isDef(oldCh) && isDef(ch)) {
           if (oldCh !== ch) { updateChildren(elm, oldCh, ch, insertedVnodeQueue, removeOnly); }
         } else if (isDef(ch)) {
+          // 新的有子节点，老的没有子节点
           {
             checkDuplicateKeys(ch);
           }
+          // 先清空老节点 DOM 的文本内容，然后为当前 DOM 节点加入子节点
           if (isDef(oldVnode.text)) { nodeOps.setTextContent(elm, ''); }
           addVnodes(elm, null, ch, 0, ch.length - 1, insertedVnodeQueue);
         } else if (isDef(oldCh)) {
+          // 老节点有子节点，新节点没有子节点
+          // 删除老节点中的子节点
           removeVnodes(oldCh, 0, oldCh.length - 1);
         } else if (isDef(oldVnode.text)) {
+          // 老节点有文本，新节点没有文本
+          // 修改文本
           nodeOps.setTextContent(elm, '');
         }
       } else if (oldVnode.text !== vnode.text) {
+        // 新老节点都有文本节点
+        // 修改文本
         nodeOps.setTextContent(elm, vnode.text);
       }
       if (isDef(data)) {
@@ -6551,8 +6663,15 @@
       }
     }
 
+    // 函数柯里化，让一个函数返回一个函数
+    // createPatchFunction({ nodeOps, modules }) 传入平台相关的两个参数
+
+    // core 中的 createPatchFunction (backend), const { modules, nodeOps } = backend
+    // core 中方法和平台无关，传入两个参数后，可以在上面的函数中使用这两个参数
     return function patch (oldVnode, vnode, hydrating, removeOnly) {
+      // 新的 VNode 不存在
       if (isUndef(vnode)) {
+        // 老的 VNode 存在，执行 Destroy 钩子函数
         if (isDef(oldVnode)) { invokeDestroyHook(oldVnode); }
         return
       }
@@ -6560,16 +6679,23 @@
       var isInitialPatch = false;
       var insertedVnodeQueue = [];
 
+      // 老的 VNode 不存在
       if (isUndef(oldVnode)) {
         // empty mount (likely as component), create new root element
         isInitialPatch = true;
+        // 创建新的 VNode
         createElm(vnode, insertedVnodeQueue);
       } else {
+        // 新的和老的 VNode 都存在，更新
         var isRealElement = isDef(oldVnode.nodeType);
+        // 判断参数1是否是真实 DOM，不是真实 DOM
         if (!isRealElement && sameVnode(oldVnode, vnode)) {
+          // 更新操作，diff 算法
           // patch existing root node
           patchVnode(oldVnode, vnode, insertedVnodeQueue, null, null, removeOnly);
         } else {
+          // 第一个参数是真实 DOM，创建 VNode
+          // 初始化
           if (isRealElement) {
             // mounting to a real element
             // check if this is server-rendered content and if we can perform
@@ -6602,6 +6728,7 @@
           var parentElm = nodeOps.parentNode(oldElm);
 
           // create new node
+          // 创建 DOM 节点
           createElm(
             vnode,
             insertedVnodeQueue,

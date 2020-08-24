@@ -41,6 +41,7 @@
       }, function(newValue, oldValue) {
         console.log(newValue)
       })
+      
       vm.$watch('user', function(newValue, oldValue) {
         this.user.fullName = newValue.firstName + ' ' + newValue.lastName
       }, {
